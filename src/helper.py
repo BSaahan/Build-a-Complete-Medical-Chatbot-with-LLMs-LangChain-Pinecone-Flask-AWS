@@ -6,12 +6,34 @@ from langchain.schema import Document
 
 
 #Extract Data From the PDF File
-def load_pdf_file(data):
-    loader= DirectoryLoader(data,
-                            glob="*.pdf",
-                            loader_cls=PyPDFLoader)
+from pathlib import Path
 
-    documents=loader.load()
+def load_pdf_file(data: str):
+    """Walk a directory and load every PDF, skipping any that fail.
+
+    The previous implementation used ``DirectoryLoader`` from LangChain,
+    which would attempt to parse every file in a batch.  If pypdf hangs on
+    a corrupted/odd PDF the entire process would stall (see the traceback
+    in the user's report).  By walking the tree ourselves we can log the
+    filename and continue on errors, giving the caller a chance to inspect
+    or remove the problematic file.
+    """
+
+    documents: list[Document] = []
+    root = Path(data)
+    if not root.exists():
+        raise FileNotFoundError(f"data directory does not exist: {root}")
+
+    for pdf_path in root.rglob("*.pdf"):
+        try:
+            loader = PyPDFLoader(str(pdf_path))
+            docs = loader.load()
+            documents.extend(docs)
+        except Exception as exc:
+            # print to stderr so it is visible in logs/console
+            print(f"[warning] failed to load {pdf_path}: {exc}")
+            # optionally continue with next file
+            continue
 
     return documents
 
